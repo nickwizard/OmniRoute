@@ -22,8 +22,12 @@ import {
   getReasoningCacheStats,
   setReasoningCache,
 } from "../../src/lib/db/reasoningCache.ts";
+import { getResolvedModelCapabilities } from "@/lib/modelCapabilities.ts";
 
 // ──────────────── Provider/Model Detection ────────────────
+// Hardcoded heuristic fallback for providers/models not yet synced via models.dev.
+// Capability-based check (interleavedField from sync) is the primary source of truth
+// and runs first — these lists are only reached when sync data is unavailable.
 
 const REASONING_REPLAY_PROVIDERS = new Set([
   "deepseek",
@@ -34,10 +38,6 @@ const REASONING_REPLAY_PROVIDERS = new Set([
   "sambanova",
   "fireworks",
   "together",
-  // Xiaomi MiMo enforces the same "pass back reasoning_content on subsequent
-  // turns" contract as DeepSeek/Kimi-thinking. Without replay the upstream
-  // 400s with "Param Incorrect: The reasoning_content in the thinking mode
-  // must be passed back to the API."
   "xiaomi-mimo",
 ]);
 
@@ -50,8 +50,6 @@ const REASONING_REPLAY_MODEL_PATTERNS = [
   /qwq/i,
   /qwen.*think/i,
   /glm.*think/i,
-  // MiMo (Xiaomi) thinking models — defensive match if a wildcard route
-  // assigns a non-`xiaomi-mimo` provider ID to a mimo-* model alias.
   /^mimo[-.]?v\d/i,
 ];
 
@@ -68,6 +66,10 @@ export function isDeepSeekReasoningModel(params: {
 
 /**
  * Check if a provider/model combination requires reasoning replay.
+ *
+ * Source of truth: model's `interleavedField` capability from models.dev sync.
+ * Models with interleaved reasoning always need reasoning_content replayed on
+ * subsequent turns (e.g., DeepSeek V4 returns 400 otherwise).
  */
 export function requiresReasoningReplay(params: {
   provider: string;
@@ -76,6 +78,14 @@ export function requiresReasoningReplay(params: {
   supportsReasoning?: boolean;
 }): boolean {
   if (isDeepSeekReasoningModel(params)) return true;
+  if (params.provider && params.model) {
+    try {
+      const caps = getResolvedModelCapabilities({ provider: params.provider, model: params.model });
+      if (caps.interleavedField !== null) return true;
+    } catch {
+      // fall through to heuristic
+    }
+  }
   const normalizedProvider = params.provider.trim().toLowerCase();
   const normalizedModel = params.model.trim();
   if (REASONING_REPLAY_PROVIDERS.has(normalizedProvider)) return true;

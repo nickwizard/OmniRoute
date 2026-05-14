@@ -176,6 +176,30 @@ test("sanitizeOpenAIResponse still strips non-DeepSeek reasoning_content with vi
   assert.equal((sanitized as any).choices[0].message.reasoning_content, undefined);
 });
 
+test("sanitizeOpenAIResponse with preserveReasoningContent=true keeps reasoning_content alongside visible content", () => {
+  const sanitized = sanitizeOpenAIResponse(
+    {
+      model: "deepseek-v4-free",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: "Visible answer here",
+            reasoning_content: "internal chain of thought",
+          },
+        },
+      ],
+    },
+    true
+  );
+
+  assert.equal((sanitized as any).choices[0].message.content, "Visible answer here");
+  assert.equal(
+    (sanitized as any).choices[0].message.reasoning_content,
+    "internal chain of thought"
+  );
+});
+
 test("sanitizeOpenAIResponse keeps reasoning_details-derived reasoning_content for reasoning-only messages", () => {
   const sanitized = sanitizeOpenAIResponse({
     model: "openrouter/model",

@@ -27,10 +27,6 @@ const ALLOWED_RESPONSES_USAGE_FIELDS = new Set([
 
 type JsonRecord = Record<string, unknown>;
 
-function isDeepSeekV4Model(model: unknown): boolean {
-  return typeof model === "string" && /deepseek[-/]v4/i.test(model);
-}
-
 function toRecord(value: unknown): JsonRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as JsonRecord;
@@ -109,10 +105,12 @@ export function extractThinkingFromContent(text: string): {
  * Sanitize a non-streaming OpenAI ChatCompletion response.
  * Strips non-standard fields and normalizes required fields.
  */
-export function sanitizeOpenAIResponse(body: unknown): unknown {
+export function sanitizeOpenAIResponse(
+  body: unknown,
+  preserveReasoningContent = false
+): unknown {
   const bodyRecord = toRecord(body);
   if (!bodyRecord) return body;
-  const isDeepSeekV4 = isDeepSeekV4Model(bodyRecord.model);
 
   // Build sanitized response with only allowed top-level fields
   const sanitized: JsonRecord = {};
@@ -126,7 +124,7 @@ export function sanitizeOpenAIResponse(body: unknown): unknown {
   // Sanitize choices
   if (Array.isArray(bodyRecord.choices)) {
     sanitized.choices = bodyRecord.choices.map((choice, idx) =>
-      sanitizeChoice(choice, idx, isDeepSeekV4)
+      sanitizeChoice(choice, idx, preserveReasoningContent)
     );
   } else {
     sanitized.choices = [];
@@ -189,7 +187,11 @@ export function sanitizeResponsesApiResponse(body: unknown): unknown {
 /**
  * Sanitize a single choice object.
  */
-function sanitizeChoice(choice: unknown, defaultIndex: number, isDeepSeekV4 = false): JsonRecord {
+function sanitizeChoice(
+  choice: unknown,
+  defaultIndex: number,
+  preserveReasoningContent = false
+): JsonRecord {
   const choiceRecord = toRecord(choice);
   const sanitized: JsonRecord = {
     index: defaultIndex,
@@ -206,10 +208,10 @@ function sanitizeChoice(choice: unknown, defaultIndex: number, isDeepSeekV4 = fa
 
   // Sanitize message (non-streaming) or delta (streaming)
   if (choiceRecord?.message !== undefined) {
-    sanitized.message = sanitizeMessage(choiceRecord.message, isDeepSeekV4);
+    sanitized.message = sanitizeMessage(choiceRecord.message, preserveReasoningContent);
   }
   if (choiceRecord?.delta !== undefined) {
-    sanitized.delta = sanitizeMessage(choiceRecord.delta);
+    sanitized.delta = sanitizeMessage(choiceRecord.delta, preserveReasoningContent);
   }
 
   // Keep logprobs if present
@@ -223,7 +225,7 @@ function sanitizeChoice(choice: unknown, defaultIndex: number, isDeepSeekV4 = fa
 /**
  * Sanitize a message object, extracting <think> tags if present.
  */
-function sanitizeMessage(msg: unknown, isDeepSeekV4 = false): unknown {
+function sanitizeMessage(msg: unknown, preserveReasoningContent = false): unknown {
   const msgRecord = toRecord(msg);
   if (!msgRecord) return msg;
 
@@ -289,15 +291,15 @@ function sanitizeMessage(msg: unknown, isDeepSeekV4 = false): unknown {
     }
   }
 
-  // Non-streaming responses should not expose both visible content and reasoning_content.
-  // Some clients drop the visible assistant text or render duplicated panels when both fields
-  // are present in the final payload. Keep reasoning_content only for reasoning-only messages.
+  // Non-streaming responses should not expose both visible content and reasoning_content
+  // by default. Some clients drop the visible assistant text or render duplicated panels
+  // when both fields are present in the final payload.
+  // Skip stripping for models with interleaved reasoning (interleavedField is set),
+  // as those models always require reasoning_content to be present in the response.
   if (
+    !preserveReasoningContent &&
     sanitized.reasoning_content !== undefined &&
-    hasVisibleMessageContent(sanitized.content) &&
-    !msgRecord.tool_calls &&
-    !msgRecord.function_call &&
-    !isDeepSeekV4
+    hasVisibleMessageContent(sanitized.content)
   ) {
     delete sanitized.reasoning_content;
   }

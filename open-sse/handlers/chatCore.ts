@@ -24,7 +24,7 @@ import {
 } from "../services/modelStrip.ts";
 import { resolveModelAlias } from "../services/modelDeprecation.ts";
 import { getUnsupportedParams } from "../config/providerRegistry.ts";
-import { supportsMaxTokens } from "@/lib/modelCapabilities.ts";
+import { supportsMaxTokens, getResolvedModelCapabilities } from "@/lib/modelCapabilities.ts";
 import {
   buildErrorBody,
   createErrorResult,
@@ -4537,7 +4537,16 @@ export async function handleChatCore({
     if (clientResponseFormat === FORMATS.OPENAI_RESPONSES) {
       translatedResponse = sanitizeResponsesApiResponse(translatedResponse);
     } else if (clientResponseFormat === FORMATS.OPENAI) {
-      translatedResponse = sanitizeOpenAIResponse(translatedResponse);
+      // Check if model supports interleaved reasoning — preserve reasoning_content
+      // in the response for models that require it (DeepSeek V4 Flash Free, etc.)
+      let preserveReasoning = false;
+      try {
+        const caps = getResolvedModelCapabilities({ provider: provider ?? "", model: model ?? "" });
+        preserveReasoning = caps.interleavedField !== null;
+      } catch {
+        // Best-effort — fall back to stripping
+      }
+      translatedResponse = sanitizeOpenAIResponse(translatedResponse, preserveReasoning);
     }
 
     // Add buffer and filter usage for client (to prevent CLI context errors)

@@ -38,10 +38,70 @@ import { getDbInstance } from "../../src/lib/db/core.ts";
 import { getReasoningCache, setReasoningCache } from "../../src/lib/db/reasoningCache.ts";
 import { DELETE, GET } from "../../src/app/api/cache/reasoning/route.ts";
 import { updateSettings } from "../../src/lib/db/settings";
+import { saveModelsDevCapabilities } from "../../src/lib/modelsDevSync.ts";
 
 before(async () => {
   await updateSettings({ requireLogin: false });
 });
+
+/**
+ * Seed model capabilities so requiresReasoningReplay() can query
+ * interleaved_field from synced data. These models represent the
+ * old hardcoded list migrated to DB-backed capabilities.
+ */
+function seedTestCapabilities(): void {
+  const base = (overrides: { interleaved_field: string | null }) => ({
+    tool_call: true,
+    reasoning: true,
+    attachment: null,
+    structured_output: null,
+    temperature: null,
+    modalities_input: "[]",
+    modalities_output: "[]",
+    knowledge_cutoff: null,
+    release_date: null,
+    last_updated: null,
+    status: null,
+    family: null,
+    open_weights: null,
+    limit_context: null,
+    limit_input: null,
+    limit_output: null,
+    ...overrides,
+  });
+
+  const hasField = { interleaved_field: "reasoning_content" } as const;
+  const noField = { interleaved_field: null } as const;
+
+  saveModelsDevCapabilities({
+    deepseek: {
+      "deepseek-chat": base(hasField),
+      "deepseek-reasoner": base(hasField),
+    },
+    "opencode-go": {
+      "some-model": base(hasField),
+    },
+    siliconflow: {
+      "deepseek-r1": base(hasField),
+    },
+    "unknown-provider": {
+      "deepseek-r1": base(hasField),
+      "deepseek-reasoner": base(hasField),
+      "kimi-k2.5": base(hasField),
+      "qwq-32b-preview": base(hasField),
+      "qwen3-thinking-235b": base(hasField),
+    },
+    glm: {
+      "glm-5-thinking": base(hasField),
+    },
+    qwen: {
+      "qwen3-thinking-235b": base(hasField),
+    },
+    openai: {
+      "gpt-4o": base(noField),
+    },
+  });
+}
 
 after(async () => {
   await updateSettings({ requireLogin: true });
@@ -391,6 +451,10 @@ describe("Reasoning Replay Cache — Service Layer", () => {
 });
 
 describe("Reasoning Replay Cache — Provider Detection", () => {
+  before(() => {
+    seedTestCapabilities();
+  });
+
   it("should detect deepseek as requiring replay", () => {
     assert.equal(requiresReasoningReplay({ provider: "deepseek", model: "deepseek-chat" }), true);
   });
@@ -505,6 +569,7 @@ describe("Reasoning Replay Cache — Provider Detection", () => {
 
 describe("Reasoning Replay Cache — Translator Replay", () => {
   before(() => {
+    seedTestCapabilities();
     clearReasoningCacheAll();
   });
 

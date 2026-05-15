@@ -2,7 +2,7 @@ FROM node:24.15.0-trixie-slim AS builder
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libsecret-1-0 ca-certificates python3 \
+  && apt-get install -y --no-install-recommends libsecret-1-0 ca-certificates build-essential python3 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./

@@ -3,8 +3,6 @@ import { initTranslators } from "@omniroute/open-sse/translator/index.ts";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
-import { providerChatCompletionSchema } from "@/shared/validation/schemas";
-import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 let initialized = false;
 
@@ -30,6 +28,7 @@ export async function OPTIONS() {
 /**
  * POST /v1/providers/{provider}/chat/completions
  * Routes to the specified provider, validating model/provider match.
+ * Body format is not pre-validated — delegates to handleChat (matching /v1/chat/completions).
  */
 export async function POST(request, { params }) {
   const { provider: rawProvider } = await params;
@@ -46,21 +45,20 @@ export async function POST(request, { params }) {
   await ensureInitialized();
 
   // Clone request with provider-prefixed model
-  let rawBody;
+  let rawBody: Record<string, unknown>;
   try {
     rawBody = await request.json();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
-  const validation = validateBody(providerChatCompletionSchema, rawBody);
-  if (isValidationFailure(validation)) {
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, validation.error.message);
-  }
-  const body = validation.data;
+  const modelStr: string | undefined =
+    typeof rawBody?.model === "string" && rawBody.model.trim().length > 0
+      ? rawBody.model.trim()
+      : undefined;
 
   // Validate model belongs to this provider
-  if (body.model) {
-    const modelParts = body.model.split("/");
+  if (modelStr) {
+    const modelParts = modelStr.split("/");
     const hasProviderPrefix = modelParts.length >= 2;
     const modelProvider = hasProviderPrefix ? modelParts[0] : null;
 
@@ -72,13 +70,13 @@ export async function POST(request, { params }) {
     ) {
       return errorResponse(
         HTTP_STATUS.BAD_REQUEST,
-        `Model "${body.model}" does not belong to provider "${rawProvider}". Expected prefix: ${providerAlias}/`
+        `Model "${modelStr}" does not belong to provider "${rawProvider}". Expected prefix: ${providerAlias}/`
       );
     }
 
     // Add provider prefix if missing
     if (!hasProviderPrefix) {
-      body.model = `${providerAlias}/${body.model}`;
+      rawBody.model = `${providerAlias}/${modelStr}`;
     }
   }
 
@@ -86,7 +84,7 @@ export async function POST(request, { params }) {
   const newRequest = new Request(request.url, {
     method: request.method,
     headers: request.headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify(rawBody),
   });
 
   return await handleChat(newRequest, buildClientRawRequest(request, rawBody));

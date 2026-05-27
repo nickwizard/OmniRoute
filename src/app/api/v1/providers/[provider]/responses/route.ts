@@ -1,9 +1,9 @@
 import { handleChat } from "@/sse/handlers/chat";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { providerChatCompletionSchema } from "@/shared/validation/schemas";
-import { initTranslators } from "@omniroute/open-sse/translator/index.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
+import { withEarlyStreamKeepalive } from "@omniroute/open-sse/utils/earlyStreamKeepalive";
 import {
   buildProviderClientRawRequest,
   buildProviderCorsOptions,
@@ -11,27 +11,15 @@ import {
   getProviderRouteContext,
   prefixAndValidateProviderModel,
   readProviderJsonBody,
-} from "../../_utils";
+} from "../_utils";
 
-let initialized = false;
-
-async function ensureInitialized() {
-  if (!initialized) {
-    await initTranslators();
-    initialized = true;
-  }
-}
-
-/**
- * Handle CORS preflight
- */
 export async function OPTIONS() {
   return buildProviderCorsOptions();
 }
 
 /**
- * POST /v1/providers/{provider}/chat/completions
- * Routes to the specified provider, validating model/provider match.
+ * POST /v1/providers/{provider}/responses
+ * Routes OpenAI Responses-format requests to the specified provider.
  */
 export async function POST(
   request: Request,
@@ -40,8 +28,6 @@ export async function POST(
   const { provider: rawProvider } = await params;
   const context = getProviderRouteContext(rawProvider);
   if (context.error) return context.error;
-
-  await ensureInitialized();
 
   const parsed = await readProviderJsonBody(request);
   if (parsed.error) return parsed.error;
@@ -56,5 +42,13 @@ export async function POST(
   if (modelError) return modelError;
 
   const forwardRequest = buildProviderForwardRequest(request, body);
-  return handleChat(forwardRequest, buildProviderClientRawRequest(request, parsed.body));
+  const responsePromise = handleChat(
+    forwardRequest,
+    buildProviderClientRawRequest(request, parsed.body)
+  );
+  const accept = String(request.headers?.get?.("accept") || "").toLowerCase();
+  if (accept.includes("text/event-stream")) {
+    return withEarlyStreamKeepalive(responsePromise, { signal: request.signal });
+  }
+  return responsePromise;
 }

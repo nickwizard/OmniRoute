@@ -11,7 +11,7 @@ import {
   getProviderRouteContext,
   prefixAndValidateProviderModel,
   readProviderJsonBody,
-} from "../../_utils";
+} from "../_utils";
 
 let initialized = false;
 
@@ -22,16 +22,13 @@ async function ensureInitialized() {
   }
 }
 
-/**
- * Handle CORS preflight
- */
 export async function OPTIONS() {
   return buildProviderCorsOptions();
 }
 
 /**
- * POST /v1/providers/{provider}/chat/completions
- * Routes to the specified provider, validating model/provider match.
+ * POST /v1/providers/{provider}/messages
+ * Routes Claude Messages-format requests to the specified provider.
  */
 export async function POST(
   request: Request,

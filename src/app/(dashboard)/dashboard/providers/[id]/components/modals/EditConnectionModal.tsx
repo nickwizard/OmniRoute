@@ -163,7 +163,9 @@ export default function EditConnectionModal({
   const isClaude = provider === "claude";
   const isGeminiCli = provider === "gemini-cli";
   const isAntigravity = provider === "antigravity";
-  const supportsGoogleProjectId = isGeminiCli || isAntigravity;
+  const isAgy = provider === "agy";
+  const isAntigravityFamily = isAntigravity || isAgy;
+  const supportsGoogleProjectId = isGeminiCli || isAntigravityFamily;
   const localProviderMetadata = getLocalProviderMetadata(provider);
   const isLocalSelfHostedProvider = !!localProviderMetadata;
   const isGooglePse = provider === "google-pse-search";
@@ -545,7 +547,7 @@ export default function EditConnectionModal({
           updates.providerSpecificData.projectId = trimmedCloudCodeProjectId || null;
         }
       }
-      if (isAntigravity) {
+      if (isAntigravityFamily) {
         updates.providerSpecificData = {
           ...(connection.providerSpecificData || {}),
           ...(updates.providerSpecificData || {}),
@@ -683,9 +685,7 @@ export default function EditConnectionModal({
           {showFreeModelsToggle && (
             <Toggle
               checked={formData.importFreeModelsOnly}
-              onChange={(checked) =>
-                setFormData({ ...formData, importFreeModelsOnly: checked })
-              }
+              onChange={(checked) => setFormData({ ...formData, importFreeModelsOnly: checked })}
               label={t("importFreeModelsOnlyLabel")}
               description={t("importFreeModelsOnlyHint")}
             />
@@ -699,7 +699,7 @@ export default function EditConnectionModal({
         </div>
         {supportsGoogleProjectId && (
           <div className="flex flex-col gap-4 rounded-lg border border-border/50 bg-surface/20 p-4">
-            {isAntigravity && (
+            {isAntigravityFamily && (
               <Select
                 label={t("antigravityClientProfileLabel")}
                 value={formData.antigravityClientProfile}
@@ -714,15 +714,19 @@ export default function EditConnectionModal({
               />
             )}
             <Input
-              label={isAntigravity ? t("antigravityProjectIdLabel") : t("geminiCliProjectIdLabel")}
+              label={
+                isAntigravityFamily ? t("antigravityProjectIdLabel") : t("geminiCliProjectIdLabel")
+              }
               value={formData.cloudCodeProjectId}
               onChange={(e) => setFormData({ ...formData, cloudCodeProjectId: e.target.value })}
               placeholder={
-                isAntigravity
+                isAntigravityFamily
                   ? t("antigravityProjectIdPlaceholder")
                   : t("geminiCliProjectIdPlaceholder")
               }
-              hint={isAntigravity ? t("antigravityProjectIdHint") : t("geminiCliProjectIdHint")}
+              hint={
+                isAntigravityFamily ? t("antigravityProjectIdHint") : t("geminiCliProjectIdHint")
+              }
               className="font-mono text-xs"
             />
           </div>

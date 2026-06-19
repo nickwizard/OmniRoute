@@ -7,10 +7,10 @@ const modalPath =
 const source = readFileSync(modalPath, "utf8");
 
 describe("agy Project ID UI support", () => {
-  it("declares isAgy from connection.provider", () => {
+  it("declares isAgy from provider", () => {
     assert.ok(
-      source.includes('connection?.provider === "agy"'),
-      "isAgy must be declared via connection.provider === 'agy'"
+      source.includes('const isAgy = provider === "agy"'),
+      "isAgy must be declared via provider === 'agy'"
     );
   });
 
@@ -30,7 +30,7 @@ describe("agy Project ID UI support", () => {
 
   it("uses isAntigravityFamily for antigravityProjectIdLabel", () => {
     assert.ok(
-      source.includes('label={isAntigravityFamily ? t("antigravityProjectIdLabel")'),
+      source.includes('isAntigravityFamily ? t("antigravityProjectIdLabel")'),
       "projectId label must reference isAntigravityFamily"
     );
   });
